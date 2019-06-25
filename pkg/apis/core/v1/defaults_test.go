@@ -938,6 +938,9 @@ func TestSetDefaultService(t *testing.T) {
 	if svc2.Spec.Type != v1.ServiceTypeClusterIP {
 		t.Errorf("Expected default type:%s, got: %s", v1.ServiceTypeClusterIP, svc2.Spec.Type)
 	}
+	if svc2.Spec.ServiceIPFamily != v1.ServiceIPFamilyClusterDefault {
+		t.Errorf("Expected default type[ServiceIPFamily]:%s, got:%s", v1.ServiceIPFamilyClusterDefault, svc2.Spec.ServiceIPFamily)
+	}
 }
 
 func TestSetDefaultServiceSessionAffinityConfig(t *testing.T) {

@@ -3207,6 +3207,18 @@ type LoadBalancerIngress struct {
 	Hostname string
 }
 
+// ServiceIPFamily represents the IP Family which the service will expose
+type ServiceIPFamily string
+
+const (
+	// Default value of ServiceIPFamily. Represents the IPFamily of the first of ServiceCIDRs  assigned to this cluster.
+	ServiceIPFamilyClusterDefault ServiceIPFamily = "ClusterDefault"
+	// IPv4Service indicates that this service will expose IPv4 IP and will select only endpoints that are IPv4
+	IPv4Service ServiceIPFamily = "IPv4Service"
+	// IPv6Service indicates that this service will expose IPv6 and will select only endpoints that are IPv6
+	IPv6Service ServiceIPFamily = "IPv6Service"
+)
+
 // ServiceSpec describes the attributes that a user creates on a service
 type ServiceSpec struct {
 	// Type determines how the Service is exposed. Defaults to ClusterIP. Valid
@@ -3307,6 +3319,11 @@ type ServiceSpec struct {
 	// of peer discovery.
 	// +optional
 	PublishNotReadyAddresses bool
+
+	// The IPFamily value dictates the IPFamily of ClusterIP, LoadBalancerIP, Ingress IPs
+	// and Endpoints selected for this service.
+	// +optional
+	ServiceIPFamily ServiceIPFamily
 }
 
 type ServicePort struct {

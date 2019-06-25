@@ -3768,6 +3768,7 @@ func ValidatePodTemplateUpdate(newPod, oldPod *core.PodTemplate) field.ErrorList
 var supportedSessionAffinityType = sets.NewString(string(core.ServiceAffinityClientIP), string(core.ServiceAffinityNone))
 var supportedServiceType = sets.NewString(string(core.ServiceTypeClusterIP), string(core.ServiceTypeNodePort),
 	string(core.ServiceTypeLoadBalancer), string(core.ServiceTypeExternalName))
+var supportedServiceIPFamily = sets.NewString(string(core.ServiceIPFamilyClusterDefault), string(core.IPv4Service), string(core.IPv6Service))
 
 // ValidateService tests if required fields/annotations of a Service are valid.
 func ValidateService(service *core.Service) field.ErrorList {
@@ -3937,6 +3938,11 @@ func ValidateService(service *core.Service) field.ErrorList {
 		if err != nil {
 			allErrs = append(allErrs, field.Invalid(fieldPath, val, "must be a list of IP ranges. For example, 10.240.0.0/24,10.250.0.0/24 "))
 		}
+	}
+
+	//Validate service IPFamily
+	if len(service.Spec.ServiceIPFamily) > 0 && !supportedServiceIPFamily.Has(string(service.Spec.ServiceIPFamily)) {
+		allErrs = append(allErrs, field.NotSupported(specPath.Child("serviceIPFamily"), service.Spec.ServiceIPFamily, supportedServiceIPFamily.List()))
 	}
 
 	allErrs = append(allErrs, validateServiceExternalTrafficFieldsValue(service)...)

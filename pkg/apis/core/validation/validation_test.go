@@ -9559,6 +9559,28 @@ func TestValidateService(t *testing.T) {
 			},
 			numErrs: 1,
 		},
+		{
+			name: "valid, service with no IPFamily",
+			tweakSvc: func(s *core.Service) {
+				s.Spec.ServiceIPFamily = ""
+			},
+			numErrs: 0,
+		},
+		{
+			name: "valid, service with valid IPFamily",
+			tweakSvc: func(s *core.Service) {
+				s.Spec.ServiceIPFamily = core.IPv4Service
+			},
+			numErrs: 0,
+		},
+
+		{
+			name: "invalid, service with invalid IPFamily",
+			tweakSvc: func(s *core.Service) {
+				s.Spec.ServiceIPFamily = core.ServiceIPFamily("not-a-valid-ip-family")
+			},
+			numErrs: 1,
+		},
 	}
 
 	for _, tc := range testCases {

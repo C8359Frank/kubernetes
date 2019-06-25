@@ -23,11 +23,16 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/diff"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/registry/rest"
 	api "k8s.io/kubernetes/pkg/apis/core"
 	_ "k8s.io/kubernetes/pkg/apis/core/install"
+
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	featuregatetesting "k8s.io/component-base/featuregate/testing"
+	"k8s.io/kubernetes/pkg/features"
 )
 
 func TestExportService(t *testing.T) {
@@ -240,4 +245,69 @@ func TestServiceStatusStrategy(t *testing.T) {
 	if len(errs) != 0 {
 		t.Errorf("Unexpected error %v", errs)
 	}
+}
+
+func makeServiceWithIPFamily(IPFamily api.ServiceIPFamily) *api.Service {
+	return &api.Service{
+		Spec: api.ServiceSpec{
+			ServiceIPFamily: IPFamily,
+		},
+	}
+}
+func TestDropDisabledField(t *testing.T) {
+	testCases := []struct {
+		name            string
+		enableDualStack bool
+		svc             *api.Service
+		oldSvc          *api.Service
+		compareSvc      *api.Service
+	}{
+		{
+			name:            "not dual stack, field not used",
+			enableDualStack: false,
+			svc:             makeServiceWithIPFamily(api.ServiceIPFamily("")),
+			oldSvc:          nil,
+			compareSvc:      makeServiceWithIPFamily(api.ServiceIPFamily("")),
+		},
+		{
+			name:            "not dual stack, field used in newi, not in old",
+			enableDualStack: false,
+			svc:             makeServiceWithIPFamily(api.IPv4Service),
+			oldSvc:          nil,
+			compareSvc:      makeServiceWithIPFamily(api.ServiceIPFamily("")),
+		},
+		{
+			name:            "not dual stack, field used in old and new",
+			enableDualStack: false,
+			svc:             makeServiceWithIPFamily(api.IPv4Service),
+			oldSvc:          makeServiceWithIPFamily(api.IPv4Service),
+			compareSvc:      makeServiceWithIPFamily(api.IPv4Service),
+		},
+		{
+			name:            "dualstack, field used",
+			enableDualStack: true,
+			svc:             makeServiceWithIPFamily(api.IPv6Service),
+			oldSvc:          nil,
+			compareSvc:      makeServiceWithIPFamily(api.IPv6Service),
+		},
+
+		/* add more tests for other dropped fields as needed */
+	}
+	for _, tc := range testCases {
+		func() {
+			defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.IPv6DualStack, tc.enableDualStack)()
+			old := tc.oldSvc.DeepCopy()
+			dropServiceDisabledFields(tc.svc, tc.oldSvc)
+
+			// old node  should never be changed
+			if !reflect.DeepEqual(tc.oldSvc, old) {
+				t.Errorf("%v: old svc changed: %v", tc.name, diff.ObjectReflectDiff(tc.oldSvc, old))
+			}
+
+			if !reflect.DeepEqual(tc.svc, tc.compareSvc) {
+				t.Errorf("%v: unexpected svc spec: %v", tc.name, diff.ObjectReflectDiff(tc.svc, tc.compareSvc))
+			}
+		}()
+	}
+
 }
