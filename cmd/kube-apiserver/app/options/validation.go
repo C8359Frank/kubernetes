@@ -19,12 +19,14 @@ package options
 import (
 	"errors"
 	"fmt"
+	"net"
 
 	apiextensionsapiserver "k8s.io/apiextensions-apiserver/pkg/apiserver"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	aggregatorscheme "k8s.io/kube-aggregator/pkg/apiserver/scheme"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	"k8s.io/kubernetes/pkg/features"
+	netutils "k8s.io/utils/net"
 )
 
 // TODO: Longer term we should read this from some config store, rather than a flag.
@@ -37,6 +39,33 @@ func validateClusterIPFlags(options *ServerRunOptions) []error {
 	var ones, bits = options.ServiceClusterIPRange.Mask.Size()
 	if bits-ones > 20 {
 		errs = append(errs, errors.New("specified --service-cluster-ip-range is too large"))
+	}
+
+	// Secondary IP validation
+	secondaryServiceClusterIPRangeUsed := (options.SecondaryServiceClusterIPRange.IP != nil)
+	if secondaryServiceClusterIPRangeUsed && !utilfeature.DefaultFeatureGate.Enabled(features.IPv6DualStack) {
+		errs = append(errs, fmt.Errorf("--secondary-service-cluster-ip-range can only be used if %v feature is enabled", string(features.IPv6DualStack)))
+	}
+
+	// note: While the cluster might be dualstack (i.e. pods with multiple IPs), the user may choose
+	// to only ingress traffic within and into the cluster on one IP family only. this family is decided
+	// by the range set on --service-cluster-ip-range. If/when the user decides to use dual stack services
+	// the Secondary* must be of different IPFamily than --service-cluster-ip-range
+	if secondaryServiceClusterIPRangeUsed {
+		// Should be dualstack IPFamily(ServiceClusterIPRange) != IPFamily(SecondaryServiceClusterIPRange)
+		dualstack, err := netutils.IsDualStackCIDRs([]*net.IPNet{&options.ServiceClusterIPRange, &options.SecondaryServiceClusterIPRange})
+		if err != nil {
+			errs = append(errs, errors.New("error attempting to validate dualstack for --service-cluster-ip-range and --secondary-service-cluster-ip-range"))
+		}
+
+		if !dualstack {
+			errs = append(errs, errors.New("--service-cluster-ip-range and --secondary-service-cluster-ip-range must be of different IP family"))
+		}
+
+		var ones, bits = options.SecondaryServiceClusterIPRange.Mask.Size()
+		if bits-ones > 20 {
+			errs = append(errs, errors.New("specified --secondary-service-cluster-ip-range is too large"))
+		}
 	}
 
 	return errs

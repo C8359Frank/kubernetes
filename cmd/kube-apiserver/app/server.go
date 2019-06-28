@@ -313,6 +313,17 @@ func CreateKubeAPIServerConfig(
 		return
 	}
 
+	// defaults to empty range and ip
+	var secondaryServiceIPRange net.IPNet
+	var secondaryApiServerServiceIP net.IP
+	// process secondary range only if provided by user
+	if s.SecondaryServiceClusterIPRange.IP != nil {
+		secondaryServiceIPRange, secondaryApiServerServiceIP, lastErr = master.DefaultServiceIPRange(s.SecondaryServiceClusterIPRange)
+		if lastErr != nil {
+			return
+		}
+	}
+
 	clientCA, lastErr := readCAorNil(s.Authentication.ClientCert.ClientCA)
 	if lastErr != nil {
 		return
@@ -343,8 +354,11 @@ func CreateKubeAPIServerConfig(
 
 			Tunneler: nodeTunneler,
 
-			ServiceIPRange:       serviceIPRange,
-			APIServerServiceIP:   apiServerServiceIP,
+			ServiceIPRange:              serviceIPRange,
+			APIServerServiceIP:          apiServerServiceIP,
+			SecondaryServiceIPRange:     secondaryServiceIPRange,
+			SecondaryAPIServerServiceIP: secondaryApiServerServiceIP,
+
 			APIServerServicePort: 443,
 
 			ServiceNodePortRange:      s.ServiceNodePortRange,

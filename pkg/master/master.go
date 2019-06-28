@@ -131,6 +131,13 @@ type ExtraConfig struct {
 	ServiceIPRange net.IPNet
 	// The IP address for the GenericAPIServer service (must be inside ServiceIPRange)
 	APIServerServiceIP net.IP
+
+	// dual stack services, the range represents an alternative IP range for service IP
+	// must be of different family than primary (ServiceIPRange)
+	SecondaryServiceIPRange net.IPNet
+	// the secondary IP address the GenericAPIServer service (must be inside SecondaryServiceIPRange)
+	SecondaryAPIServerServiceIP net.IP
+
 	// Port for the apiserver service.
 	APIServerServicePort int
 

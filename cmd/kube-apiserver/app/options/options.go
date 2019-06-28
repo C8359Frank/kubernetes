@@ -49,16 +49,17 @@ type ServerRunOptions struct {
 	CloudProvider           *kubeoptions.CloudProviderOptions
 	APIEnablement           *genericoptions.APIEnablementOptions
 
-	AllowPrivileged           bool
-	EnableLogsHandler         bool
-	EventTTL                  time.Duration
-	KubeletConfig             kubeletclient.KubeletClientConfig
-	KubernetesServiceNodePort int
-	MaxConnectionBytesPerSec  int64
-	ServiceClusterIPRange     net.IPNet // TODO: make this a list
-	ServiceNodePortRange      utilnet.PortRange
-	SSHKeyfile                string
-	SSHUser                   string
+	AllowPrivileged                bool
+	EnableLogsHandler              bool
+	EventTTL                       time.Duration
+	KubeletConfig                  kubeletclient.KubeletClientConfig
+	KubernetesServiceNodePort      int
+	MaxConnectionBytesPerSec       int64
+	ServiceClusterIPRange          net.IPNet
+	SecondaryServiceClusterIPRange net.IPNet
+	ServiceNodePortRange           utilnet.PortRange
+	SSHKeyfile                     string
+	SSHUser                        string
 
 	ProxyClientCertFile string
 	ProxyClientKeyFile  string
@@ -179,6 +180,10 @@ func (s *ServerRunOptions) Flags() (fss cliflag.NamedFlagSets) {
 	fs.IPNetVar(&s.ServiceClusterIPRange, "service-cluster-ip-range", s.ServiceClusterIPRange, ""+
 		"A CIDR notation IP range from which to assign service cluster IPs. This must not "+
 		"overlap with any IP ranges assigned to nodes for pods.")
+
+	fs.IPNetVar(&s.SecondaryServiceClusterIPRange, "secondary-service-cluster-ip-range", s.SecondaryServiceClusterIPRange, ""+
+		"A CIDR notation IP range from which to assign service cluster IPs. This must not "+
+		"overlap with any IP ranges assigned to nodes for pods. Must not be of the same IP family as ServiceClusterIPRange")
 
 	fs.Var(&s.ServiceNodePortRange, "service-node-port-range", ""+
 		"A port range to reserve for services with NodePort visibility. "+
