@@ -71,23 +71,40 @@ func newProxyServer(
 		return nil, fmt.Errorf("unable to register configz: %s", err)
 	}
 
-	protocol := utiliptables.ProtocolIpv4
-	if net.ParseIP(config.BindAddress).To4() == nil {
-		klog.V(0).Infof("IPv6 bind address (%s), assume IPv6 operation", config.BindAddress)
-		protocol = utiliptables.ProtocolIpv6
-	}
-
-	var iptInterface utiliptables.Interface
+	// Define IPv4 and IPv6 interfaces.
+	// A nil pointer indicates that the interface is not enabled.
+	var ipt4Interface *utiliptables.Interface
+	var ipt6Interface *utiliptables.Interface
 	var ipvsInterface utilipvs.Interface
+
 	var kernelHandler ipvs.KernelHandler
 	var ipsetInterface utilipset.Interface
+
 	var dbus utildbus.Interface
+	dbus = utildbus.New() // TODO(vllry) does this need to be unique per-iptables interface?
 
 	// Create a iptables utils.
-	execer := exec.New()
+	execer := exec.New() // TODO(vllry) does this need to be unique per-iptables interface?
 
-	dbus = utildbus.New()
-	iptInterface = utiliptables.New(execer, dbus, protocol)
+	// Create iptables interfaces.
+	// Creates an IPv4 and/or IPv6 interface, depending on the types of BindAddresses.
+	for _, bindAddress := range config.BindAddress {
+		if net.ParseIP(bindAddress).To4() != nil {
+			if ipt4Interface == nil {
+				klog.V(0).Infof("IPv4 bind address (%s), assume IPv4 operation", config.BindAddress)
+				newInterface := utiliptables.New(execer, dbus, utiliptables.ProtocolIpv4)
+				ipt4Interface = &newInterface
+			}
+		} else {
+			if ipt6Interface == nil {
+				klog.V(0).Infof("IPv6 bind address (%s), assume IPv6 operation", config.BindAddress)
+				newInterface := utiliptables.New(execer, dbus, utiliptables.ProtocolIpv6)
+				ipt6Interface = &newInterface
+			}
+		}
+
+	}
+
 	kernelHandler = ipvs.NewLinuxKernelHandler()
 	ipsetInterface = utilipset.New(execer)
 	canUseIPVS, _ := ipvs.CanUseIPVSProxier(kernelHandler, ipsetInterface)
@@ -99,7 +116,8 @@ func newProxyServer(
 	if cleanupAndExit {
 		return &ProxyServer{
 			execer:         execer,
-			IptInterface:   iptInterface,
+			Ipt4Interface:   ipt4Interface,
+			Ipt6Interface:   ipt6Interface,
 			IpvsInterface:  ipvsInterface,
 			IpsetInterface: ipsetInterface,
 		}, nil
@@ -135,10 +153,15 @@ func newProxyServer(
 	var proxier proxy.ProxyProvider
 
 	proxyMode := getProxyMode(string(config.Mode), iptInterface, kernelHandler, ipsetInterface, iptables.LinuxKernelCompatTester{})
-	nodeIP := net.ParseIP(config.BindAddress)
-	if nodeIP.IsUnspecified() {
-		nodeIP = utilnode.GetNodeIP(client, hostname)
+
+	nodeIPs := make([]net.IP, len(config.BindAddress))
+	for index, ip := range config.BindAddress {
+		nodeIPs[index] = net.ParseIP(ip)
+		if nodeIPs[index].IsUnspecified() {
+			nodeIPs[index] = utilnode.GetNodeIP(client, hostname) // TODO(@vllry) check GetNodeIP behavior
+		}
 	}
+
 	if proxyMode == proxyModeIPTables {
 		klog.V(0).Info("Using iptables Proxier.")
 		if config.IPTables.MasqueradeBit == nil {
@@ -157,7 +180,7 @@ func newProxyServer(
 			int(*config.IPTables.MasqueradeBit),
 			config.ClusterCIDR,
 			hostname,
-			nodeIP,
+			nodeIPs,
 			recorder,
 			healthzUpdater,
 			config.NodePortAddresses,
@@ -182,7 +205,7 @@ func newProxyServer(
 			int(*config.IPTables.MasqueradeBit),
 			config.ClusterCIDR,
 			hostname,
-			nodeIP,
+			nodeIPs,
 			recorder,
 			healthzServer,
 			config.IPVS.Scheduler,

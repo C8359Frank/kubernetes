@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"os"
 	goruntime "runtime"
@@ -142,7 +143,14 @@ func (o *Options) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&o.ConfigFile, "config", o.ConfigFile, "The path to the configuration file.")
 	fs.StringVar(&o.WriteConfigTo, "write-config-to", o.WriteConfigTo, "If set, write the default configuration values to this file and exit.")
 	fs.StringVar(&o.config.ClientConnection.Kubeconfig, "kubeconfig", o.config.ClientConnection.Kubeconfig, "Path to kubeconfig file with authorization information (the master location is set by the master flag).")
-	fs.StringVar(&o.config.ClusterCIDR, "cluster-cidr", o.config.ClusterCIDR, "The CIDR range of pods in the cluster. When configured, traffic sent to a Service cluster IP from outside this range will be masqueraded and traffic sent from pods to an external LoadBalancer IP will be directed to the respective cluster IP instead")
+
+	// TODO(vllry) add support for utilflag.IPVar-style checking with a list.
+	var clusterCIDRsRaw string
+	fs.StringVar(&clusterCIDRsRaw, "cluster-cidr", clusterCIDRsRaw, "The CIDR range of pods in the cluster. When configured, traffic sent to a Service cluster IP from outside this range will be masqueraded and traffic sent from pods to an external LoadBalancer IP will be directed to the respective cluster IP instead")
+	for _, cidr := range strings.Split(clusterCIDRsRaw, ",") {
+		o.config.ClusterCIDR = append(o.config.ClusterCIDR, cidr)
+	}
+
 	fs.StringVar(&o.config.ClientConnection.ContentType, "kube-api-content-type", o.config.ClientConnection.ContentType, "Content type of requests sent to apiserver.")
 	fs.StringVar(&o.master, "master", o.master, "The address of the Kubernetes API server (overrides any value in kubeconfig)")
 	fs.StringVar(&o.hostnameOverride, "hostname-override", o.hostnameOverride, "If non-empty, will use this string as identification instead of the actual hostname.")
@@ -155,7 +163,14 @@ func (o *Options) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&o.CleanupAndExit, "cleanup", o.CleanupAndExit, "If true cleanup iptables and ipvs rules and exit.")
 	fs.BoolVar(&o.CleanupIPVS, "cleanup-ipvs", o.CleanupIPVS, "If true and --cleanup is specified, kube-proxy will also flush IPVS rules, in addition to normal cleanup.")
 
-	fs.Var(utilflag.IPVar{Val: &o.config.BindAddress}, "bind-address", "The IP address for the proxy server to serve on (set to `0.0.0.0` for all IPv4 interfaces and `::` for all IPv6 interfaces)")
+	// TODO(vllry) check that this is how IPSlice works.
+	ipSlice := make([]net.IP, 0)
+	fs.IPSliceVar(&ipSlice, "bind-address", ipSlice, "The IP address for the proxy server to serve on (set to `0.0.0.0` for all IPv4 interfaces and `::` for all IPv6 interfaces)")
+	o.config.BindAddress = make([]string, len(ipSlice))
+	for index, ip := range ipSlice {
+		o.config.BindAddress[index] = ip.String()
+	}
+
 	fs.Var(utilflag.IPVar{Val: &o.config.HealthzBindAddress}, "healthz-bind-address", "The IP address for the health check server to serve on (set to `0.0.0.0` for all IPv4 interfaces and `::` for all IPv6 interfaces)")
 	fs.Var(utilflag.IPVar{Val: &o.config.MetricsBindAddress}, "metrics-bind-address", "The IP address for the metrics server to serve on (set to `0.0.0.0` for all IPv4 interfaces and `::` for all IPv6 interfaces)")
 	fs.Var(utilflag.PortRangeVar{Val: &o.config.PortRange}, "proxy-port-range", "Range of host ports (beginPort-endPort, single port or beginPort+offset, inclusive) that may be consumed in order to proxy service traffic. If (unspecified, 0, or 0-0) then ports will be randomly chosen.")
@@ -464,7 +479,8 @@ with the apiserver API to configure the proxy.`,
 type ProxyServer struct {
 	Client                 clientset.Interface
 	EventClient            v1core.EventsGetter
-	IptInterface           utiliptables.Interface
+	Ipt4Interface          *utiliptables.Interface
+	Ipt6Interface          *utiliptables.Interface
 	IpvsInterface          utilipvs.Interface
 	IpsetInterface         utilipset.Interface
 	execer                 exec.Interface
@@ -658,9 +674,13 @@ func getConntrackMax(config kubeproxyconfig.KubeProxyConntrackConfiguration) (in
 
 // CleanupAndExit remove iptables rules and exit if success return nil
 func (s *ProxyServer) CleanupAndExit() error {
-	encounteredError := userspace.CleanupLeftovers(s.IptInterface)
-	encounteredError = iptables.CleanupLeftovers(s.IptInterface) || encounteredError
-	encounteredError = ipvs.CleanupLeftovers(s.IpvsInterface, s.IptInterface, s.IpsetInterface, s.CleanupIPVS) || encounteredError
+	var encounteredError bool
+	for _, iface := range []*utiliptables.Interface{s.Ipt4Interface, s.Ipt6Interface} {
+		encounteredError := userspace.CleanupLeftovers(*iface)
+		encounteredError = iptables.CleanupLeftovers(*iface) || encounteredError
+		encounteredError = ipvs.CleanupLeftovers(s.IpvsInterface, *iface, s.IpsetInterface, s.CleanupIPVS) || encounteredError
+	}
+
 	if encounteredError {
 		return errors.New("encountered an error while tearing down rules")
 	}
