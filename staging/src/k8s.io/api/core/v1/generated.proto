@@ -4460,6 +4460,12 @@ message ServiceSpec {
   // sessionAffinityConfig contains the configurations of session affinity.
   // +optional
   optional SessionAffinityConfig sessionAffinityConfig = 14;
+
+  // The IPFamily value dictates the IPFamily of ClusterIP, LoadBalancerIP, Ingress IPs
+  // and Endpoints selected for this service.
+  // Default is ServiceIPFamilyClusterDefault
+  // +optional
+  optional string serviceIPFamily = 15;
 }
 
 // ServiceStatus represents the current status of a service.

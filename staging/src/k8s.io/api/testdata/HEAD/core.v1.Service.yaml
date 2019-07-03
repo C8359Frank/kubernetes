@@ -50,6 +50,7 @@ spec:
   publishNotReadyAddresses: true
   selector:
     "25": "26"
+  serviceIPFamily: Ơ歿:狞夌碕ʂɭîcP$I
   sessionAffinity: 洝尿彀
   sessionAffinityConfig:
     clientIP:
